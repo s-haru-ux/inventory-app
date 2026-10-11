@@ -23,12 +23,11 @@ except FileNotFoundError:
 try:
     # 金庫(Secrets)からAPIキーを取り出して設定する
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    # 賢くて速いモデル「Gemini 1.5 Flash」を使います
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    # ★ここを修正しました！最新のモデル「gemini-3-flash-preview」を使います
+    model = genai.GenerativeModel("gemini-3-flash-preview")
 except KeyError:
     st.error("AIの準備ができていません。Streamlitの設定画面(Secrets)に GEMINI_API_KEY を登録してください。")
     st.stop()
-
 
 # ========== 4. 検索窓と検索機能 ==========
 search_word = st.text_input("🔍 検索キーワード（例：雑巾、掃除道具、段ボール）")

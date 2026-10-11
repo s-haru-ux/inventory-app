@@ -23,7 +23,6 @@ except FileNotFoundError:
 try:
     # 金庫(Secrets)からAPIキーを取り出して設定する
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    # 最新のモデル「gemini-3-flash-preview」を使います
     model = genai.GenerativeModel("gemini-3-flash-preview")
 except KeyError:
     st.error("AIの準備ができていません。Streamlitの設定画面(Secrets)に GEMINI_API_KEY を登録してください。")
@@ -34,63 +33,65 @@ except KeyError:
 search_word = st.text_input("🔍 検索キーワード（例：雑巾、掃除道具、段ボール）")
 
 if search_word:
-    # スプレッドシートにある資材の名前を全部集めて1つの文章にする
-    item_list = df["資材名"].astype(str).tolist()
-    item_list_str = "、".join(item_list)
+    # 【節約術💡】まずはAIを使わずに、入力された文字が資材名にあるか普通に探す
+    normal_result_df = df[df["資材名"].astype(str).str.contains(search_word, na=False)]
     
-    # AIへのお願い（プロンプト）を作る
-    prompt = f"""
-    あなたは優秀な倉庫管理者です。以下の「資材リスト」の中から、「{search_word}」という用途やキーワードに関連する資材をすべて選んでください。
-    （例：「ゴキブリ対策」なら「アースレッド」などを選ぶ）
+    # 普通の検索で見つかった場合は、AIを使わない（API消費ゼロ！）
+    if len(normal_result_df) > 0:
+        result_df = normal_result_df
     
-    選んだ資材の名前だけをカンマ（,）区切りで出力してください。それ以外の説明は絶対に書かないでください。
-    もし関連する資材が1つもない場合は「なし」とだけ出力してください。
-    
-    【資材リスト】
-    {item_list_str}
-    """
-    
-    # AIに考えてもらう
-    try:
-        with st.spinner("🤖 AIが資材を探しています..."):
-            response = model.generate_content(prompt)
-            ai_answer = response.text.strip()
+    # 普通の検索で見つからなかった場合のみ、AIに推測してもらう
+    else:
+        # スプレッドシートにある資材の名前を全部集めて1つの文章にする
+        item_list = df["資材名"].astype(str).tolist()
+        item_list_str = "、".join(item_list)
         
-        if ai_answer == "なし" or ai_answer == "":
-             st.warning(f"「{search_word}」に関連する資材は見つかりませんでした。")
-        else:
-             # AIが見つけた資材名のリストを作る
-             found_items = [item.strip() for item in ai_answer.split(",")]
-             
-             # 見つかった資材だけを表に残す
-             result_df = df[df["資材名"].isin(found_items)]
-             
-             if len(result_df) > 0:
-                 st.success(f"AIが見つけた関連資材: {ai_answer}")
-                 
-                 # ★ここで画面を「左:6」と「右:4」の比率に分割します！
-                 col1, col2 = st.columns([6, 4])
-                 
-                 # 左の部屋（col1）に表を入れる
-                 with col1:
-                     st.markdown("### 📋 検索結果")
-                     st.dataframe(result_df, use_container_width=True, hide_index=True)
-                 
-                 # 右の部屋（col2）に図面を入れる
-                 with col2:
-                     st.markdown("### 🗺️ マップ")
-                     try:
-                         st.image("map_image.png", caption="図面上の番号と照らし合わせてください")
-                     except FileNotFoundError:
-                         st.info("※ここに図面の画像が表示されます。")
-             else:
-                 st.warning(f"「{search_word}」に関連する資材は見つかりませんでした。")
-                 
-    except Exception as e:
-        st.error(f"AIの検索中にエラーが発生しました。設定を確認してください。（エラー内容: {e}）")
+        prompt = f"""
+        あなたは優秀な倉庫管理者です。以下の「資材リスト」の中から、「{search_word}」という用途やキーワードに関連する資材をすべて選んでください。
+        （例：「ゴキブリ対策」なら「アースレッド」などを選ぶ）
+        
+        選んだ資材の名前だけをカンマ（,）区切りで出力してください。それ以外の説明は絶対に書かないでください。
+        もし関連する資材が1つもない場合は「なし」とだけ出力してください。
+        
+        【資材リスト】
+        {item_list_str}
+        """
+        
+        try:
+            with st.spinner("🤖 AIが関連する資材を推測しています..."):
+                response = model.generate_content(prompt)
+                ai_answer = response.text.strip()
+            
+            if ai_answer == "なし" or ai_answer == "":
+                result_df = pd.DataFrame() # 空っぽの表にする
+            else:
+                found_items = [item.strip() for item in ai_answer.split(",")]
+                result_df = df[df["資材名"].isin(found_items)]
+                
+        except Exception as e:
+            st.error(f"AIの検索中にエラーが発生しました。（エラー内容: {e}）")
+            result_df = pd.DataFrame()
+
+    # --- 検索結果の画面表示 ---
+    if len(result_df) > 0:
+        # 画面を「左:6」と「右:4」に分割
+        col1, col2 = st.columns([6, 4])
+        
+        with col1:
+            st.markdown("### 📋 検索結果")
+            st.dataframe(result_df, use_container_width=True, hide_index=True)
+            
+        with col2:
+            st.markdown("### 🗺️ マップ")
+            try:
+                st.image("map_image.png", caption="図面上の番号と照らし合わせてください")
+            except FileNotFoundError:
+                st.info("※ここに図面の画像が表示されます。")
+    else:
+        st.warning(f"「{search_word}」に関連する資材は見つかりませんでした。")
         
 else:
-    # 検索窓が空の時（全データ表示）も、同じように左右に分割します
+    # 検索窓が空の時
     col1, col2 = st.columns([6, 4])
     
     with col1:

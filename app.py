@@ -23,18 +23,17 @@ except FileNotFoundError:
 try:
     # 金庫(Secrets)からAPIキーを取り出して設定する
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    # ★ここを修正しました！最新のモデル「gemini-3-flash-preview」を使います
+    # 最新のモデル「gemini-3-flash-preview」を使います
     model = genai.GenerativeModel("gemini-3-flash-preview")
 except KeyError:
     st.error("AIの準備ができていません。Streamlitの設定画面(Secrets)に GEMINI_API_KEY を登録してください。")
     st.stop()
 
+
 # ========== 4. 検索窓と検索機能 ==========
 search_word = st.text_input("🔍 検索キーワード（例：雑巾、掃除道具、段ボール）")
 
 if search_word:
-    st.markdown("### 🤖 AIが資材を探しています...")
-    
     # スプレッドシートにある資材の名前を全部集めて1つの文章にする
     item_list = df["資材名"].astype(str).tolist()
     item_list_str = "、".join(item_list)
@@ -53,8 +52,9 @@ if search_word:
     
     # AIに考えてもらう
     try:
-        response = model.generate_content(prompt)
-        ai_answer = response.text.strip()
+        with st.spinner("🤖 AIが資材を探しています..."):
+            response = model.generate_content(prompt)
+            ai_answer = response.text.strip()
         
         if ai_answer == "なし" or ai_answer == "":
              st.warning(f"「{search_word}」に関連する資材は見つかりませんでした。")
@@ -67,14 +67,22 @@ if search_word:
              
              if len(result_df) > 0:
                  st.success(f"AIが見つけた関連資材: {ai_answer}")
-                 st.markdown("### 📋 検索結果")
-                 st.dataframe(result_df, use_container_width=True, hide_index=True)
                  
-                 st.markdown("### 🗺️ マップ")
-                 try:
-                     st.image("map_image.png", caption="図面上の番号と照らし合わせてください")
-                 except FileNotFoundError:
-                     st.info("※ここに図面の画像が表示されます。")
+                 # ★ここで画面を「左:6」と「右:4」の比率に分割します！
+                 col1, col2 = st.columns([6, 4])
+                 
+                 # 左の部屋（col1）に表を入れる
+                 with col1:
+                     st.markdown("### 📋 検索結果")
+                     st.dataframe(result_df, use_container_width=True, hide_index=True)
+                 
+                 # 右の部屋（col2）に図面を入れる
+                 with col2:
+                     st.markdown("### 🗺️ マップ")
+                     try:
+                         st.image("map_image.png", caption="図面上の番号と照らし合わせてください")
+                     except FileNotFoundError:
+                         st.info("※ここに図面の画像が表示されます。")
              else:
                  st.warning(f"「{search_word}」に関連する資材は見つかりませんでした。")
                  
@@ -82,5 +90,16 @@ if search_word:
         st.error(f"AIの検索中にエラーが発生しました。設定を確認してください。（エラー内容: {e}）")
         
 else:
-    st.markdown("### 📋 全データ一覧")
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    # 検索窓が空の時（全データ表示）も、同じように左右に分割します
+    col1, col2 = st.columns([6, 4])
+    
+    with col1:
+        st.markdown("### 📋 全データ一覧")
+        st.dataframe(df, use_container_width=True, hide_index=True)
+        
+    with col2:
+        st.markdown("### 🗺️ マップ")
+        try:
+            st.image("map_image.png", caption="図面上の番号と照らし合わせてください")
+        except FileNotFoundError:
+            st.info("※ここに図面の画像が表示されます。")
